@@ -46,20 +46,17 @@ function portSpy(): SendRequestPort & { accept: ReturnType<typeof vi.fn> } {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Worker help and operational response composition', () => {
-  it.each(['/help', '/start'])('delivers actionable onboarding for %s as safe plain text', async (command) => {
-    const sent: Record<string, unknown>[] = [];
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
-      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return Response.json({ ok: true, result: { message_id: sent.length } });
-    });
+  it.each(['/help', '/start'])('returns actionable onboarding directly to Telegram for %s', async (command) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('outbound Telegram API unavailable'));
 
     const response = await createWorker().fetch(webhook(command), workerEnv(), {} as ExecutionContext);
 
     expect(response.status).toBe(200);
     expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(sent[0]).toMatchObject({ chat_id: -10042 });
-    expect(sent[0]?.parse_mode).toBeUndefined();
-    const text = String(sent[0]?.text);
+    const reply = await response.json() as Record<string, unknown>;
+    expect(reply).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
+    expect(reply.parse_mode).toBeUndefined();
+    const text = String(reply.text);
     expect(text).toContain('/send box.example.com متن پیام');
     expect(text).toContain('/inbox box.example.com');
     expect(text).toContain('example.com');

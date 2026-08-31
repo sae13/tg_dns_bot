@@ -26,8 +26,16 @@ export type UpdateHandlingResult =
   | { readonly status: 'invalid_mailbox' }
   | { readonly status: 'accepted'; readonly request: SendRequest };
 
+export interface TelegramWebhookMethod {
+  readonly method: 'sendMessage';
+  readonly chat_id: number;
+  readonly text: string;
+}
+
 export interface UpdateHandler {
-  handle(update: TelegramUpdate): Promise<UpdateHandlingResult | InboxHandlingResult | HelpHandlingResult | void>;
+  handle(
+    update: TelegramUpdate
+  ): Promise<UpdateHandlingResult | InboxHandlingResult | HelpHandlingResult | TelegramWebhookMethod | void>;
 }
 
 export interface SendHandlerConfig {

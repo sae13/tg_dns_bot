@@ -38,8 +38,8 @@ export async function handleTelegramWebhook(
   if (parsed.status === 'unsupported') return json({ ok: true, ignored: true }, 200);
 
   try {
-    await withTimeout(handler.handle(parsed.update), HANDLER_TIMEOUT_MS);
-    return json({ ok: true }, 200);
+    const result = await withTimeout(handler.handle(parsed.update), HANDLER_TIMEOUT_MS);
+    return isTelegramWebhookMethod(result) ? json(result, 200) : json({ ok: true }, 200);
   } catch (error) {
     if (error instanceof ConfigurationError) throw error;
     console.error('Telegram update handling failed', {
@@ -96,6 +96,15 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
+}
+
+function isTelegramWebhookMethod(result: unknown): result is Record<string, unknown> {
+  if (typeof result !== 'object' || result === null) return false;
+  const candidate = result as Record<string, unknown>;
+  return candidate.method === 'sendMessage' &&
+    typeof candidate.chat_id === 'number' &&
+    Number.isSafeInteger(candidate.chat_id) &&
+    typeof candidate.text === 'string';
 }
 
 function json(body: object, status: number): Response {

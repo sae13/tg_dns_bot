@@ -3,6 +3,7 @@ import {
   createInboxUpdateHandler,
   createSendUpdateHandler,
   type SendRequestPort,
+  type TelegramWebhookMethod,
   type UpdateHandler
 } from './application/handle-update';
 import type { TxtResolverPort } from './application/txt-resolver';
@@ -68,7 +69,14 @@ function lazyUpdateHandler(env: Env, sendPort?: SendRequestPort, txtResolver?: T
       if (isHelpUpdate(update)) {
         const result = await createHelpUpdateHandler(helpFeatureConfig(env)).handle(update);
         if (isResultStatus(result, 'help') && result.chatId !== undefined) {
-          await deliverPlainText(env, result.chatId, result.text, 'help');
+          try {
+            await deliverPlainText(env, result.chatId, result.text, 'help');
+          } catch (error) {
+            if (error instanceof TelegramDeliveryError && error.errorType === 'network_error') {
+              return telegramWebhookMessage(result.chatId, result.text);
+            }
+            throw error;
+          }
         } else if (isResultStatus(result, 'help_disabled') && result.chatId !== undefined) {
           await deliverPlainText(
             env,
@@ -138,6 +146,14 @@ async function deliverPlainText(
     }
     throw error;
   }
+}
+
+function telegramWebhookMessage(chatId: number, text: string): TelegramWebhookMethod {
+  return {
+    method: 'sendMessage',
+    chat_id: chatId,
+    text
+  };
 }
 
 function isResultStatus<T extends string>(
