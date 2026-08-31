@@ -1,0 +1,26 @@
+name = "tg-dns-bot"
+main = "src/index.ts"
+compatibility_date = "2025-09-02"
+
+[vars]
+SEND_ENABLED = "false"
+INBOX_ENABLED = "false"
+HELP_ENABLED = "true"
+ZONE_MAP = "[]"
+TELEGRAM_API_BASE_URL = "https://api.telegram.org"
+CLOUDFLARE_API_BASE_URL = "https://api.cloudflare.com/client/v4"
+RATE_SENDER_CAPACITY = "5"
+RATE_MAILBOX_CAPACITY = "3"
+RATE_WINDOW_SECONDS = "60"
+DNS_TTL_SECONDS = "60"
+PROVIDER_TIMEOUT_SECONDS = "15"
+
+[[durable_objects.bindings]]
+name = "COORDINATOR"
+class_name = "MailboxCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MailboxCoordinator"]
+
+# BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, and CLOUDFLARE_API_TOKEN are Wrangler secrets.

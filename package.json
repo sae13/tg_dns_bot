@@ -1,0 +1,32 @@
+{
+  "name": "tg-dns-bot-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "set-webhook": "tsx scripts/set-webhook.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.70",
+    "@cloudflare/workers-types": "^4.20250902.0",
+    "@eslint/js": "^9.34.0",
+    "@types/node": "^20.19.11",
+    "eslint": "^9.34.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.34.0"
+  },
+  "dependencies": {
+    "punycode": "^2.3.1"
+  }
+}
