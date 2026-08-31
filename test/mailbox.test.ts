@@ -33,12 +33,23 @@ describe('resolveMailbox', () => {
   ]);
 
   it.each([
-    ['example.com', 'example.com', 'zone-example'],
     ['Box.Example.COM.', 'box.example.com', 'zone-example'],
     ['shop.bücher.example', 'shop.xn--bcher-kva.example', 'zone-idn'],
     ['shop.xn--bcher-kva.example.', 'shop.xn--bcher-kva.example', 'zone-idn']
   ])('routes %s on a DNS label boundary', (input, fqdn, zoneId) => {
     expect(resolveMailbox(input, zones)).toEqual({ fqdn, zoneId });
+  });
+
+  it('limits publication to hosts beneath the configured delegated subtree', () => {
+    const delegatedZones = createAllowedZoneMap([['salam.ifrom.ir', 'zone-ifrom']]);
+
+    expect(resolveMailbox('hi.salam.ifrom.ir', delegatedZones)).toEqual({
+      fqdn: 'hi.salam.ifrom.ir',
+      zoneId: 'zone-ifrom'
+    });
+    expect(resolveMailbox('salam.ifrom.ir', delegatedZones)).toBeNull();
+    expect(resolveMailbox('hi.ifrom.ir', delegatedZones)).toBeNull();
+    expect(resolveMailbox('ifrom.ir', delegatedZones)).toBeNull();
   });
 
   it.each([

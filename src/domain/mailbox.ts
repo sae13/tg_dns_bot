@@ -72,7 +72,7 @@ export function createAllowedZoneMap(entries: readonly (readonly [string, string
 export function resolveMailbox(input: string, zones: AllowedZoneMap): ResolvedMailbox | null {
   const fqdn = canonicalizeMailbox(input);
   if (fqdn === null) return null;
-  const zone = zones.find((candidate) => isWithinSuffix(fqdn, candidate.suffix));
+  const zone = zones.find((candidate) => isWithinDelegatedSuffix(fqdn, candidate.suffix));
   return zone === undefined ? null : { fqdn, zoneId: zone.zoneId };
 }
 
@@ -109,7 +109,11 @@ function hasValidJoiners(label: string): boolean {
 }
 
 function isWithinSuffix(name: string, suffix: string): boolean {
-  return name === suffix || name.endsWith(`.${suffix}`);
+  return name === suffix || isWithinDelegatedSuffix(name, suffix);
+}
+
+function isWithinDelegatedSuffix(name: string, suffix: string): boolean {
+  return name.endsWith(`.${suffix}`);
 }
 
 function hasForbiddenHostCharacter(input: string): boolean {
