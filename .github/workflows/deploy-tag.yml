@@ -116,10 +116,3 @@ jobs:
           TELEGRAM_WEBHOOK_URL: ${{ steps.deploy.outputs.deployment-url }}/webhook
         run: npm run check-webhook
 
-      - name: Replay one pending Telegram update
-        if: failure()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
-          TELEGRAM_WEBHOOK_URL: ${{ steps.deploy.outputs.deployment-url }}/webhook
-        run: npm run replay-pending-update

@@ -18,7 +18,11 @@ export async function registerWebhook(options: {
   const response = await safeFetch(fetchImpl, methodUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url: options.webhookUrl, secret_token: options.webhookSecret })
+    body: JSON.stringify({
+      url: options.webhookUrl,
+      secret_token: options.webhookSecret,
+      drop_pending_updates: true
+    })
   });
   if (!response.ok) throw new Error(`Telegram returned HTTP ${response.status}`);
   const result = await parseTelegramResponse(response);

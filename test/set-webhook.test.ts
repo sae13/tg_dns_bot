@@ -22,7 +22,11 @@ describe('registerWebhook', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.telegram.org/botsecret-bot-token/setWebhook');
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: 'POST',
-      body: JSON.stringify({ url: options.webhookUrl, secret_token: options.webhookSecret })
+      body: JSON.stringify({
+        url: options.webhookUrl,
+        secret_token: options.webhookSecret,
+        drop_pending_updates: true
+      })
     });
     expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.telegram.org/botsecret-bot-token/getWebhookInfo');
     expect(JSON.stringify(logSpy.mock.calls)).not.toContain(options.botToken);
