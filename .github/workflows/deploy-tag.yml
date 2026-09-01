@@ -122,5 +122,5 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          timeout 90s npx wrangler tail tg-dns-bot --format pretty --search 'Telegram update handling failed' || status=$?
+          timeout 90s npx wrangler tail tg-dns-bot --format pretty --status error || status=$?
           test "${status:-0}" -eq 124

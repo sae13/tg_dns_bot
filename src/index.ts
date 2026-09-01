@@ -53,7 +53,9 @@ export function createWorker(
           console.error('Required binding is invalid', { binding: error.bindingName });
           return Response.json({ error: 'service_misconfigured' }, { status: 503 });
         }
-        console.error('Unhandled webhook error');
+        console.error('Unhandled webhook error', {
+          errorType: error instanceof Error ? error.name : typeof error
+        });
         return Response.json({ error: 'internal_error' }, { status: 500 });
       }
     }
