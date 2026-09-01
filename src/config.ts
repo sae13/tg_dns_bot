@@ -13,6 +13,8 @@ export interface Env {
   TELEGRAM_API_BASE_URL?: string;
   CLOUDFLARE_API_BASE_URL?: string;
   CLOUDFLARE_API_TOKEN?: string;
+  EXTERNAL_WRITER_URL?: string;
+  EXTERNAL_WRITER_SHARED_SECRET?: string;
   DNS_TTL_SECONDS?: string;
   RATE_SENDER_CAPACITY?: string;
   RATE_MAILBOX_CAPACITY?: string;
@@ -48,6 +50,29 @@ export function webhookConfig(env: Env): WebhookConfig {
 export interface SendFeatureConfig {
   readonly sendEnabled: boolean;
   readonly allowedZones: () => AllowedZoneMap;
+}
+
+export interface ExternalWriterConfig {
+  readonly endpoint: string;
+  readonly sharedSecret: string;
+}
+
+export function externalWriterConfig(env: Env): ExternalWriterConfig {
+  const endpoint = requireBinding(env.EXTERNAL_WRITER_URL, 'EXTERNAL_WRITER_URL');
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw new InvalidBindingError('EXTERNAL_WRITER_URL');
+  }
+  if (parsed.protocol !== 'https:' || parsed.username !== '' || parsed.password !== '' || parsed.hash !== '') {
+    throw new InvalidBindingError('EXTERNAL_WRITER_URL');
+  }
+  const sharedSecret = requireBinding(env.EXTERNAL_WRITER_SHARED_SECRET, 'EXTERNAL_WRITER_SHARED_SECRET');
+  if (!/^[A-Za-z0-9_-]{16,256}$/u.test(sharedSecret)) {
+    throw new InvalidBindingError('EXTERNAL_WRITER_SHARED_SECRET');
+  }
+  return { endpoint: parsed.href.endsWith('/') && !endpoint.endsWith('/') ? parsed.href.slice(0, -1) : parsed.href, sharedSecret };
 }
 
 export interface CoordinatorPublishConfig {

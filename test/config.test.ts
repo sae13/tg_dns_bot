@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   InvalidBindingError,
+  MissingBindingError,
   coordinatorPublishConfig,
+  externalWriterConfig,
   helpFeatureConfig,
   readFeatureConfig,
   sendFeatureConfig,
@@ -119,6 +121,30 @@ describe('helpFeatureConfig', () => {
 
   it.each(['TRUE', '1', 'yes', ''])('rejects a non-canonical help flag: %j', (value) => {
     expect(() => helpFeatureConfig({ HELP_ENABLED: value })).toThrow(InvalidBindingError);
+  });
+});
+
+describe('externalWriterConfig', () => {
+  it('reads an HTTPS endpoint and opaque shared secret', () => {
+    expect(externalWriterConfig({
+      EXTERNAL_WRITER_URL: 'https://writer.example.test/publish',
+      EXTERNAL_WRITER_SHARED_SECRET: 'shared-secret-value'
+    })).toEqual({
+      endpoint: 'https://writer.example.test/publish',
+      sharedSecret: 'shared-secret-value'
+    });
+  });
+
+  it('rejects a missing external writer URL', () => {
+    expect(() => externalWriterConfig({ EXTERNAL_WRITER_SHARED_SECRET: 'shared-secret-value' }))
+      .toThrowError(new MissingBindingError('EXTERNAL_WRITER_URL'));
+  });
+
+  it.each([
+    [{ EXTERNAL_WRITER_URL: 'http://writer.example.test/publish', EXTERNAL_WRITER_SHARED_SECRET: 'shared-secret-value' }, 'EXTERNAL_WRITER_URL'],
+    [{ EXTERNAL_WRITER_URL: 'https://writer.example.test/publish', EXTERNAL_WRITER_SHARED_SECRET: 'short' }, 'EXTERNAL_WRITER_SHARED_SECRET']
+  ] as const)('rejects invalid external writer configuration %#', (env, binding) => {
+    expect(() => externalWriterConfig(env)).toThrowError(new InvalidBindingError(binding));
   });
 });
 

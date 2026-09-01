@@ -138,20 +138,13 @@ describe('Worker inbox command composition', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it('renders and delivers the reconstructed inbox to the originating chat as plain text', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+  it('returns the reconstructed inbox through the webhook without calling Telegram outbound', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = new URL(String(input));
       if (url.hostname === 'cloudflare-dns.com') {
         return dnsFound('outside.example', [managedWire('سلام <raw>', 1, 1)]);
       }
-      expect(url.hostname).toBe('api.telegram.test');
-      expect(url.pathname).toBe('/bot123:bot-secret/sendMessage');
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      expect(body.chat_id).toBe(-10042);
-      expect(body.parse_mode).toBeUndefined();
-      expect(body.text).toContain('کامل');
-      expect(body.text).toContain('سلام <raw>');
-      return Response.json({ ok: true, result: { message_id: 100 } });
+      throw new Error('outbound Telegram API must not run');
     });
 
     const response = await createWorker().fetch(
@@ -164,35 +157,34 @@ describe('Worker inbox command composition', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const reply = await response.json() as Record<string, unknown>;
+    expect(reply).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
+    expect(reply.parse_mode).toBeUndefined();
+    expect(String(reply.text)).toContain('کامل');
+    expect(String(reply.text)).toContain('سلام <raw>');
   });
 
-  it('delivers a long Persian result in ordered Telegram-safe chunks without loss', async () => {
+  it('returns a Telegram-safe first chunk for a long result without calling Telegram outbound', async () => {
     const messageText = 'سلام🙂'.repeat(900);
-    const sent: string[] = [];
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = new URL(String(input));
       if (url.hostname === 'cloudflare-dns.com') {
         return dnsFound('outside.example', [managedWire(messageText, 1, 1)]);
       }
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      expect(body.chat_id).toBe(-10042);
-      expect(body.parse_mode).toBeUndefined();
-      sent.push(String(body.text));
-      return Response.json({ ok: true, result: { message_id: sent.length } });
+      throw new Error('outbound Telegram API must not run');
     });
 
     const response = await createWorker().fetch(
-      webhookWithChat('/inbox outside.example'),
-      workerEnv({ BOT_TOKEN: '123:bot-secret', TELEGRAM_API_BASE_URL: 'https://api.telegram.test' }),
-      {} as ExecutionContext
+      webhookWithChat('/inbox outside.example'), workerEnv(), {} as ExecutionContext
     );
 
     expect(response.status).toBe(200);
-    expect(sent.length).toBeGreaterThan(1);
-    expect(sent.every((chunk) => Array.from(chunk).length <= 4_096)).toBe(true);
-    expect(sent.map((chunk) => chunk.replace(/^\[\d+\/\d+\]\n/u, '')).join('')).toContain(messageText);
-    expect(fetchMock).toHaveBeenCalledTimes(sent.length + 1);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const reply = await response.json() as Record<string, unknown>;
+    expect(reply).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
+    expect(Array.from(String(reply.text)).length).toBeLessThanOrEqual(4_096);
+    expect(String(reply.text)).toMatch(/^\[1\/\d+\]\n/u);
   });
 
   it('does not send a reply when the originating message has no chat identity', async () => {
@@ -212,17 +204,16 @@ describe('Worker inbox command composition', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it('reports Telegram failure metadata without logging credentials, provider details, or inbox text', async () => {
+  it('does not expose credentials or inbox text through logs while returning a webhook reply', async () => {
     const botToken = '123:bot-secret-never-log';
     const inboxText = 'private-inbox-text-never-log';
-    const providerDetail = 'provider-detail-never-log';
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = new URL(String(input));
       if (url.hostname === 'cloudflare-dns.com') {
         return dnsFound('outside.example', [managedWire(inboxText, 1, 1)]);
       }
-      return Response.json({ ok: false, description: providerDetail });
+      throw new Error('outbound Telegram API must not run');
     });
 
     const response = await createWorker().fetch(
@@ -231,13 +222,12 @@ describe('Worker inbox command composition', () => {
       {} as ExecutionContext
     );
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(await response.json()).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
     const logs = JSON.stringify(consoleSpy.mock.calls);
-    expect(logs).toContain('correlationId');
-    expect(logs).toContain('chunkIndex');
     expect(logs).not.toContain(botToken);
     expect(logs).not.toContain(inboxText);
-    expect(logs).not.toContain(providerDetail);
   });
 
   it.each([

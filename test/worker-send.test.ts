@@ -19,6 +19,22 @@ function webhook(text: string): Request {
   });
 }
 
+function webhookWithChat(text: string): Request {
+  return new Request('https://worker.test/webhook', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      update_id: 91,
+      message: {
+        message_id: 1,
+        text,
+        chat: { id: -10042 },
+        from: { id: 42, username: 'sender' }
+      }
+    })
+  });
+}
+
 function env(overrides: Partial<Env> = {}): Env {
   return {
     TELEGRAM_WEBHOOK_SECRET: secret,
@@ -33,6 +49,49 @@ function portSpy(): SendRequestPort & { accept: ReturnType<typeof vi.fn> } {
 }
 
 describe('Worker send command composition', () => {
+  it('returns a webhook acknowledgement after the send port accepts a message', async () => {
+    const port = portSpy();
+    const response = await createWorker(undefined, port).fetch(
+      webhookWithChat('/send box.example.com hello'), env(), {} as ExecutionContext
+    );
+
+    expect(response.status).toBe(200);
+    expect(port.accept).toHaveBeenCalledOnce();
+    const reply = await response.json() as Record<string, unknown>;
+    expect(reply).toMatchObject({
+      method: 'sendMessage',
+      chat_id: -10042
+    });
+    expect(String(reply.text)).toContain('پذیرفته شد');
+    expect(String(reply.text)).not.toContain('با موفقیت در رکورد عمومی دامنه ثبت شد');
+  });
+
+  it('publishes through the configured external writer and returns a webhook acknowledgement', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      expect(String(input)).toBe('https://writer.example.test/publish');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer shared-secret-value');
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        mailbox: 'box.example.com',
+        text: 'hello',
+        senderId: 42
+      });
+      return Response.json({ status: 'published' });
+    });
+
+    const response = await createWorker().fetch(
+      webhookWithChat('/send box.example.com hello'),
+      env({
+        EXTERNAL_WRITER_URL: 'https://writer.example.test/publish',
+        EXTERNAL_WRITER_SHARED_SECRET: 'shared-secret-value'
+      }),
+      {} as ExecutionContext
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(await response.json()).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
+  });
+
   it('wires Telegram text through parsing and mailbox routing to the send port', async () => {
     const port = portSpy();
     const response = await createWorker(undefined, port).fetch(

@@ -47,12 +47,12 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('Worker help and operational response composition', () => {
   it.each(['/help', '/start'])('returns actionable onboarding directly to Telegram for %s', async (command) => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('outbound Telegram API unavailable'));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('outbound Telegram API must not run'));
 
     const response = await createWorker().fetch(webhook(command), workerEnv(), {} as ExecutionContext);
 
     expect(response.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(fetchSpy).not.toHaveBeenCalled();
     const reply = await response.json() as Record<string, unknown>;
     expect(reply).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
     expect(reply.parse_mode).toBeUndefined();
@@ -74,11 +74,7 @@ describe('Worker help and operational response composition', () => {
   });
 
   it('returns only the disabled response without parsing invalid dependent settings', async () => {
-    const sent: Record<string, unknown>[] = [];
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
-      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return Response.json({ ok: true, result: { message_id: 1 } });
-    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('outbound Telegram API must not run'));
 
     const response = await createWorker().fetch(
       webhook('/help'),
@@ -91,16 +87,16 @@ describe('Worker help and operational response composition', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(sent[0]).toEqual({ chat_id: -10042, text: 'راهنما اکنون غیرفعال است. لطفاً بعداً دوباره تلاش کنید.' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({
+      method: 'sendMessage',
+      chat_id: -10042,
+      text: 'راهنما اکنون غیرفعال است. لطفاً بعداً دوباره تلاش کنید.'
+    });
   });
 
   it('reports disabled sending without requiring a coordinator binding or zone settings', async () => {
-    const sent: Record<string, unknown>[] = [];
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
-      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return Response.json({ ok: true, result: { message_id: 1 } });
-    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('outbound Telegram API must not run'));
     const environment = workerEnv({ SEND_ENABLED: 'false', ALLOWED_ZONE_MAP: 'not-json' });
     delete environment.COORDINATOR;
 
@@ -109,8 +105,9 @@ describe('Worker help and operational response composition', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(sent[0]).toEqual({
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({
+      method: 'sendMessage',
       chat_id: -10042,
       text: 'ارسال پیام اکنون غیرفعال است. لطفاً بعداً دوباره تلاش کنید.'
     });
@@ -120,19 +117,17 @@ describe('Worker help and operational response composition', () => {
     ['/send', 'نام کامل صندوق و متن پیام را وارد کنید.'],
     ['/send outside.invalid text', 'نام صندوق معتبر نیست یا در یکی از دامنههای مجاز نوشتن قرار ندارد.']
   ])('reports rejected enabled sending without requiring a coordinator binding: %s', async (command, warning) => {
-    const sent: Record<string, unknown>[] = [];
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
-      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return Response.json({ ok: true, result: { message_id: 1 } });
-    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('outbound Telegram API must not run'));
     const environment = workerEnv({ SEND_ENABLED: 'true' });
     delete environment.COORDINATOR;
 
     const response = await createWorker().fetch(webhook(command), environment, {} as ExecutionContext);
 
     expect(response.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(String(sent[0]?.text)).toContain(warning);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const reply = await response.json() as Record<string, unknown>;
+    expect(reply).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
+    expect(String(reply.text)).toContain(warning);
   });
 
   it.each([
@@ -143,15 +138,9 @@ describe('Worker help and operational response composition', () => {
     ['/inbox', { READ_ENABLED: 'true' }],
     ['/inbox https://bad.invalid', { READ_ENABLED: 'true' }],
     ['/inbox outside.example', { READ_ENABLED: 'false' }]
-  ] as const)('delivers an operational warning without provider or coordinator effects: %s', async (command, overrides) => {
+  ] as const)('returns an operational warning without provider or coordinator effects: %s', async (command, overrides) => {
     const port = portSpy();
-    const sent: Record<string, unknown>[] = [];
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      const url = new URL(String(input));
-      expect(url.hostname).toBe('api.telegram.test');
-      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return Response.json({ ok: true, result: { message_id: 1 } });
-    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('outbound Telegram API must not run'));
 
     const response = await createWorker(undefined, port).fetch(
       webhook(command), workerEnv(overrides), {} as ExecutionContext
@@ -159,10 +148,11 @@ describe('Worker help and operational response composition', () => {
 
     expect(response.status).toBe(200);
     expect(port.accept).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(sent[0]?.chat_id).toBe(-10042);
-    expect(sent[0]?.parse_mode).toBeUndefined();
-    expect(String(sent[0]?.text).length).toBeGreaterThan(10);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const reply = await response.json() as Record<string, unknown>;
+    expect(reply).toMatchObject({ method: 'sendMessage', chat_id: -10042 });
+    expect(reply.parse_mode).toBeUndefined();
+    expect(String(reply.text).length).toBeGreaterThan(10);
   });
 
   it('does not call Telegram when a help command has no chat identity', async () => {

@@ -8,14 +8,11 @@ import {
 } from './application/handle-update';
 import type { TxtResolverPort } from './application/txt-resolver';
 import { CloudflareDohTxtResolver } from './adapters/cloudflare-doh-txt-resolver';
+import { ExternalWriterClient } from './adapters/external-writer-client';
 import {
   renderInboxState,
   splitTelegramText
 } from './adapters/telegram-inbox-renderer';
-import {
-  TelegramBotApiAdapter,
-  TelegramDeliveryError
-} from './adapters/telegram-bot-api';
 import { handleTelegramWebhook } from './adapters/telegram-webhook';
 import {
   renderOperationalResponse,
@@ -24,10 +21,10 @@ import {
 import {
   InvalidBindingError,
   MissingBindingError,
+  externalWriterConfig,
   helpFeatureConfig,
   readFeatureConfig,
   sendFeatureConfig,
-  telegramBotConfig,
   webhookConfig,
   type Env
 } from './config';
@@ -69,21 +66,9 @@ function lazyUpdateHandler(env: Env, sendPort?: SendRequestPort, txtResolver?: T
       if (isHelpUpdate(update)) {
         const result = await createHelpUpdateHandler(helpFeatureConfig(env)).handle(update);
         if (isResultStatus(result, 'help') && result.chatId !== undefined) {
-          try {
-            await deliverPlainText(env, result.chatId, result.text, 'help');
-          } catch (error) {
-            if (error instanceof TelegramDeliveryError && error.errorType === 'network_error') {
-              return telegramWebhookMessage(result.chatId, result.text);
-            }
-            throw error;
-          }
+          return telegramWebhookReply(result.chatId, result.text);
         } else if (isResultStatus(result, 'help_disabled') && result.chatId !== undefined) {
-          await deliverPlainText(
-            env,
-            result.chatId,
-            renderOperationalResponse('help_disabled'),
-            'help'
-          );
+          return telegramWebhookReply(result.chatId, renderOperationalResponse('help_disabled'));
         }
         return result;
       }
@@ -95,11 +80,11 @@ function lazyUpdateHandler(env: Env, sendPort?: SendRequestPort, txtResolver?: T
         });
         const result = await createInboxUpdateHandler(config, resolver).handle(update);
         if (isResultStatus(result, 'resolved') && result.chatId !== undefined) {
-          await deliverPlainText(env, result.chatId, renderInboxState(result.inbox), 'inbox');
+          return telegramWebhookReply(result.chatId, renderInboxState(result.inbox));
         } else if (update.chatId !== undefined) {
           const responseStatus = inboxOperationalStatus(result);
           if (responseStatus !== null) {
-            await deliverPlainText(env, update.chatId, renderOperationalResponse(responseStatus), 'inbox');
+            return telegramWebhookReply(update.chatId, renderOperationalResponse(responseStatus));
           }
         }
         return result;
@@ -108,12 +93,20 @@ function lazyUpdateHandler(env: Env, sendPort?: SendRequestPort, txtResolver?: T
       const sendConfig = sendFeatureConfig(env);
       const result = await createSendUpdateHandler(
         sendConfig,
-        sendPort ?? lazyCoordinatorSendPort(env)
+        sendPort ?? lazyConfiguredSendPort(env)
       ).handle(update);
       if (update.chatId !== undefined) {
+        if (isResultStatus(result, 'accepted')) {
+          return telegramWebhookReply(
+            update.chatId,
+            env.EXTERNAL_WRITER_URL === undefined
+              ? 'درخواست پیام پذیرفته شد؛ انتشار رکورد دامنه ممکن است با تأخیر انجام شود.'
+              : 'پیام با موفقیت در رکورد عمومی دامنه ثبت شد.'
+          );
+        }
         const responseStatus = sendOperationalStatus(result);
         if (responseStatus !== null) {
-          await deliverPlainText(env, update.chatId, renderOperationalResponse(responseStatus), 'send');
+          return telegramWebhookReply(update.chatId, renderOperationalResponse(responseStatus));
         }
       }
       return result;
@@ -121,38 +114,12 @@ function lazyUpdateHandler(env: Env, sendPort?: SendRequestPort, txtResolver?: T
   };
 }
 
-async function deliverPlainText(
-  env: Env,
-  chatId: number,
-  text: string,
-  operation: 'help' | 'inbox' | 'send'
-): Promise<void> {
-  const config = telegramBotConfig(env);
-  const telegram = new TelegramBotApiAdapter({
-    botToken: config.botToken,
-    timeoutMilliseconds: config.timeoutMilliseconds,
-    ...(config.apiBaseUrl === undefined ? {} : { apiBaseUrl: config.apiBaseUrl })
-  });
-  const correlationId = crypto.randomUUID();
-  try {
-    await telegram.sendChunks(chatId, splitTelegramText(text), correlationId);
-  } catch (error) {
-    if (error instanceof TelegramDeliveryError) {
-      console.error(`Telegram ${operation} delivery failed`, {
-        correlationId: error.correlationId,
-        chunkIndex: error.chunkIndex,
-        errorType: error.errorType
-      });
-    }
-    throw error;
-  }
-}
-
-function telegramWebhookMessage(chatId: number, text: string): TelegramWebhookMethod {
+function telegramWebhookReply(chatId: number, text: string): TelegramWebhookMethod {
+  const chunks = splitTelegramText(text);
   return {
     method: 'sendMessage',
     chat_id: chatId,
-    text
+    text: chunks[0]!
   };
 }
 
@@ -186,6 +153,14 @@ function isHelpUpdate(update: Parameters<UpdateHandler['handle']>[0]): boolean {
 
 function isInboxUpdate(update: Parameters<UpdateHandler['handle']>[0]): boolean {
   return update.kind === 'message' && update.text !== undefined && /^\s*\/inbox(?=\s|$)/u.test(update.text);
+}
+
+function lazyConfiguredSendPort(env: Env): SendRequestPort {
+  if (env.EXTERNAL_WRITER_URL !== undefined || env.EXTERNAL_WRITER_SHARED_SECRET !== undefined) {
+    const config = externalWriterConfig(env);
+    return new ExternalWriterClient(config);
+  }
+  return lazyCoordinatorSendPort(env);
 }
 
 function lazyCoordinatorSendPort(env: Env): SendRequestPort {
