@@ -110,17 +110,42 @@ jobs:
           TELEGRAM_WEBHOOK_URL: ${{ steps.deploy.outputs.deployment-url }}/webhook
         run: npm run set-webhook
 
+      - name: Capture Worker logs while Telegram retries
+        id: tail
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          timeout 30s npx wrangler tail tg-dns-bot --format pretty > worker-tail.log 2>&1 &
+          echo "pid=$!" >> "$GITHUB_OUTPUT"
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if grep -q 'Connected to tg-dns-bot' worker-tail.log; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat worker-tail.log
+          exit 1
+
       - name: Verify Telegram webhook delivery state
+        id: webhook-state
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_WEBHOOK_URL: ${{ steps.deploy.outputs.deployment-url }}/webhook
         run: npm run check-webhook
 
-      - name: Capture Worker logs while Telegram retries
-        if: failure()
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Wait for Telegram retry
+        if: steps.webhook-state.outcome == 'failure'
+        run: sleep 25
+
+      - name: Stop Worker log capture
+        if: always()
         run: |
-          timeout 25s npx wrangler tail tg-dns-bot --format pretty --status error || status=$?
-          test "${status:-0}" -eq 124
+          wait "${{ steps.tail.outputs.pid }}" || status=$?
+          cat worker-tail.log
+          test "${status:-124}" -eq 124
+
+      - name: Fail on Telegram delivery error
+        if: steps.webhook-state.outcome == 'failure'
+        run: exit 1
