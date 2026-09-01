@@ -10,6 +10,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "set-webhook": "tsx scripts/set-webhook.ts",
+    "check-webhook": "tsx scripts/check-webhook.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
