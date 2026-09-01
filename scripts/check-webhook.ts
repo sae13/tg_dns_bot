@@ -1,3 +1,5 @@
+export {};
+
 interface TelegramWebhookInfoResponse {
   readonly ok: boolean;
   readonly result?: {

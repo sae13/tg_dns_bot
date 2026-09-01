@@ -11,6 +11,7 @@
     "deploy": "wrangler deploy",
     "set-webhook": "tsx scripts/set-webhook.ts",
     "check-webhook": "tsx scripts/check-webhook.ts",
+    "replay-pending-update": "tsx scripts/replay-pending-update.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
