@@ -22,14 +22,21 @@ async function main(): Promise<void> {
 
   const pendingUpdateCount = body.result.pending_update_count;
   const lastErrorDate = body.result.last_error_date;
+  const lastErrorMessage = body.result.last_error_message;
   const hasLastError = typeof lastErrorDate === 'number' ||
-    (typeof body.result.last_error_message === 'string' && body.result.last_error_message.length > 0);
+    (typeof lastErrorMessage === 'string' && lastErrorMessage.length > 0);
 
   console.log(`Webhook URL verified: true`);
   console.log(`Pending updates: ${pendingUpdateCount ?? 'unknown'}`);
   console.log(`Delivery error reported: ${hasLastError}`);
   if (lastErrorDate !== undefined) console.log(`Last delivery error date: ${lastErrorDate}`);
+  if (lastErrorMessage !== undefined) console.log(`Last delivery error: ${sanitizeError(lastErrorMessage)}`);
   if (hasLastError) process.exitCode = 2;
+}
+
+function sanitizeError(value: string): string {
+  const singleLine = value.replace(/[\r\n]+/gu, ' ').trim();
+  return singleLine.length > 300 ? `${singleLine.slice(0, 300)}…` : singleLine;
 }
 
 async function parseResponse(response: Response): Promise<TelegramWebhookInfoResponse> {
