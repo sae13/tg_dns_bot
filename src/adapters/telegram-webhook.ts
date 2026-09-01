@@ -44,7 +44,8 @@ export async function handleTelegramWebhook(
     if (error instanceof ConfigurationError) throw error;
     console.error('Telegram update handling failed', {
       updateId: parsed.update.updateId,
-      errorType: error instanceof HandlerTimeoutError ? 'timeout' : 'handler_error'
+      errorType: error instanceof HandlerTimeoutError ? 'timeout' : 'handler_error',
+      exceptionType: error instanceof Error ? error.name : typeof error
     });
     return json({ error: 'update_failed' }, 500);
   }
