@@ -1,0 +1,29 @@
+name: Deploy Python Server
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SHAHRBAB_SSH_KEY }}
+
+      - name: Add StrictHostKeyChecking off
+        run: |
+          mkdir -p ~/.ssh
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Deploy to Shahrbabak
+        run: |
+          scp -P 1394 passenger_wsgi.py shahrbab@shahrbabak.org:/home/shahrbab/py/tg-python-txt-record-bot/tg_dns_bot_app.py
+          ssh -p 1394 shahrbab@shahrbabak.org "touch /home/shahrbab/py/tg-python-txt-record-bot/tmp/restart.txt"
